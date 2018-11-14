@@ -1,0 +1,6 @@
+[package]
+name = "edge_delegation"
+version = "0.1.0"
+authors = ["Drew Stone <drewstone329@gmail.com>"]
+
+[dependencies]
