@@ -35,13 +35,12 @@ extern crate sr_io as runtime_io;
 extern crate srml_balances as balances;
 extern crate srml_system as system;
 
-use runtime_primitives::traits::{MaybeSerializeDebug};
 use rstd::prelude::*;
 use system::ensure_signed;
 use runtime_support::{StorageValue, StorageMap, Parameter};
 use runtime_support::dispatch::Result;
 
-pub trait Trait: system::Trait {
+pub trait Trait: balances::Trait {
     /// The overarching event type.
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 }
@@ -50,29 +49,70 @@ decl_module! {
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
         fn deposit_event() = default;
 
-        pub fn delegate_to(origin, to: T::AccountId, weight: u64) -> Result {
-            unimplemented!()
+        pub fn delegate_to(origin, to: T::AccountId, weight: T::Balance) -> Result {
+            let _sender = ensure_signed(origin)?;
+            ensure!(<WeightOf<T>>::get(_sender.clone()) >= weight, "Insufficient weight");
+
+            let curr_weight = <WeightOf<T>>::get(_sender.clone());
+            let new_weight = curr_weight - weight;
+            <WeightOf<T>>::insert(_sender.clone(), new_weight);
+
+            let mut delegates = <DelegatesOf<T>>::get(_sender.clone());
+
+            // Check if delegate already exists and increase delegated weight
+            if delegates.iter().any(|d| d.0 == to.clone()) {
+                let index = delegates.iter().position(|d| d.0 == to.clone()).unwrap();
+                let mut delegate_record = delegates.remove(index);
+                delegate_record.1 += weight;
+                delegates.push((to, delegate_record.1));
+            } else {
+                delegates.push((to, weight));
+            }
+
+            <DelegatesOf<T>>::insert(_sender.clone(), delegates);
+            Ok(())
         }
 
-        pub fn undelegate_from(origin, from: T::AccountId, weight: u64) -> Result {
-            unimplemented!()
+        pub fn undelegate_from(origin, from: T::AccountId, weight: T::Balance) -> Result {
+            let _sender = ensure_signed(origin)?;
+
+            ensure!(<DelegatesOf<T>>::get(_sender.clone()).iter().any(|d| d.0 == from), "Delegate doesn't exist");
+
+
+            let curr_weight = <WeightOf<T>>::get(_sender.clone());
+
+            let mut delegates = <DelegatesOf<T>>::get(_sender.clone());
+            let index = delegates.iter().position(|d| d.0 == from.clone()).unwrap();
+
+            ensure!(delegates[index].1 >= weight, "Invalid undelegation weight");
+
+            let mut delegate_record = delegates.remove(index);
+            if delegate_record.1 > weight {
+                delegate_record.1 -= weight;
+                delegates.push(delegate_record);
+            }
+
+            let new_weight = curr_weight + weight;
+            <WeightOf<T>>::insert(_sender.clone(), new_weight);
+            <DelegatesOf<T>>::insert(_sender.clone(), delegates);
+            Ok(())
         }
     }
 }
 
 /// An event in this module.
 decl_event!(
-    pub enum Event<T> where <T as system::Trait>::AccountId {
-        Delegated(AccountId, AccountId, u64),
-        Undelegated(AccountId, AccountId, u64),
+    pub enum Event<T> where <T as system::Trait>::AccountId, <T as balances::Trait>::Balance {
+        Delegated(AccountId, AccountId, Balance),
+        Undelegated(AccountId, AccountId, Balance),
     }
 );
 
 decl_storage! {
     trait Store for Module<T: Trait> as IdentityStorage {
         /// The amount of undelegated weight for an account
-        pub WeightOf get(weight_of): map T::AccountId => u64;
+        pub WeightOf get(weight_of): map T::AccountId => T::Balance;
         /// The map of weights an account is delegating to
-        pub DelegatesOf get(delegates_of): map T::AccountId => Vec<(T::AccountId, u64)>;
+        pub DelegatesOf get(delegates_of): map T::AccountId => Vec<(T::AccountId, T::Balance)>;
     }
 }

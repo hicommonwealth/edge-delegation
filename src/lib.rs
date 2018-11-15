@@ -40,6 +40,7 @@ extern crate srml_support as runtime_support;
 extern crate sr_primitives as runtime_primitives;
 extern crate sr_io as runtime_io;
 
+extern crate srml_balances as balances;
 extern crate srml_system as system;
 
 use rstd::prelude::*;
@@ -57,7 +58,7 @@ mod tests {
     use system::{EventRecord, Phase};
     use runtime_io::with_externalities;
     use runtime_io::ed25519::Pair;
-    use primitives::{H256, Blake2Hasher, Hasher};
+    use primitives::{H256, Blake2Hasher};
     // The testing primitives are very useful for avoiding having to work with signatures
     // or public keys. `u64` is used as the `AccountId` and no `Signature`s are requried.
     use runtime_primitives::{
@@ -71,7 +72,7 @@ mod tests {
 
     impl_outer_event! {
         pub enum Event for Test {
-            delegation<T>,
+            delegation<T>, balances<T>,
         }
     }
 
@@ -97,12 +98,21 @@ mod tests {
         type Log = DigestItem;
     }
 
+    impl balances::Trait for Test {
+        type Balance = u64;
+        type AccountIndex = u64;
+        type OnFreeBalanceZero = ();
+        type EnsureAccountLiquid = ();
+        type Event = Event;
+    }
+
     impl Trait for Test {
         type Event = Event;
     }
 
-    type System = system::Module<Test>;
-    type Delegation = Module<Test>;
+    pub type System = system::Module<Test>;
+    pub type Balances = balances::Module<Test>;
+    pub type Delegation = Module<Test>;
 
     // This function basically just builds a genesis storage key/value store according to
     // our desired mockup.
