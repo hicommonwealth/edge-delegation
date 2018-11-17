@@ -134,7 +134,7 @@ decl_module! {
 }
 
 impl<T: Trait> Module<T> {
-    /// Implement rudimentary BFS to find if "to"'s delegation every leads to "from"
+    /// Implement rudimentary DFS to find if "to"'s delegation every leads to "from"
     pub fn has_delegation_cycle(from: T::AccountId, to: T::AccountId) -> bool {
         // Create data structures
         let mut stack: Vec<T::AccountId> = vec![to.clone()];
