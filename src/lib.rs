@@ -121,4 +121,15 @@ mod tests {
         // We use default for brevity, but you can configure as desired if needed.
         t.into()
     }
+
+    #[test]
+    fn propose_with_valid_sig_should_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let public: H256 = pair.public().0.into();
+
+        });
+    }
 }
