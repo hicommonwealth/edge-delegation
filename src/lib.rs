@@ -141,6 +141,12 @@ mod tests {
             let weight = 100;
 
             assert_ok!(delegate_to(public, to_public, weight));
+            assert_eq!(System::events(), vec![
+                EventRecord {
+                    phase: Phase::ApplyExtrinsic(0),
+                    event: Event::delegation(RawEvent::Delegated(public, to_public, weight))
+                }]
+            );
         });
     }
 
@@ -230,6 +236,123 @@ mod tests {
 
             assert_ok!(delegate_to(public, to_public, weight));
             assert_eq!(delegate_to(to_public, public, weight), Err("Invalid delegation due to a cycle"));
+        });
+    }
+
+    #[test]
+    fn new_account_delegate_and_undelegate_should_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let to: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f61"));
+            let public: H256 = pair.public().0.into();
+            let to_public: H256 = to.public().0.into();
+            let weight = 100;
+
+            assert_ok!(delegate_to(public, to_public, weight));
+            assert_eq!(System::events(), vec![
+                EventRecord {
+                    phase: Phase::ApplyExtrinsic(0),
+                    event: Event::delegation(RawEvent::Delegated(public, to_public, weight))
+                }]
+            );
+
+            assert_ok!(undelegate_from(public, to_public, weight));
+            assert_eq!(System::events(), vec![
+                EventRecord {
+                    phase: Phase::ApplyExtrinsic(0),
+                    event: Event::delegation(RawEvent::Delegated(public, to_public, weight))
+                },
+                EventRecord {
+                    phase: Phase::ApplyExtrinsic(0),
+                    event: Event::delegation(RawEvent::Undelegated(public, to_public, weight))
+                }]
+            );
+        });
+    }
+
+    #[test]
+    fn undelegate_from_nobody_should_not_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let public: H256 = pair.public().0.into();
+            let weight = 100;
+
+            assert_eq!(undelegate_from(public, H256::from(1), weight), Err("Delegate doesn't exist"));
+        });
+    }
+
+    #[test]
+    fn undelegate_from_onself_should_not_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let public: H256 = pair.public().0.into();
+            let weight = 100;
+
+            assert_eq!(undelegate_from(public, public, weight), Err("Invalid delegation action"));
+        });
+    }
+
+    #[test]
+    fn undelegate_with_invalid_weight_should_not_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let public: H256 = pair.public().0.into();
+            let weight = 101;
+
+            assert_eq!(undelegate_from(public, H256::from(1), weight), Err("Invalid weight"));
+        });
+    }
+
+    #[test]
+    fn undelegate_more_than_exists_should_not_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let public: H256 = pair.public().0.into();
+            let weight = 99;
+            let more_than_exists = 100;
+
+            assert_ok!(delegate_to(public, H256::from(1), weight));
+            assert_eq!(undelegate_from(public, H256::from(1), more_than_exists), Err("Invalid undelegation weight"));
+        });
+    }
+
+    #[test]
+    fn undelegate_less_than_exists_should_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let public: H256 = pair.public().0.into();
+            let weight = 99;
+
+            assert_ok!(delegate_to(public, H256::from(1), weight));
+            assert_ok!(undelegate_from(public, H256::from(1), 50));
+            assert_ok!(undelegate_from(public, H256::from(1), 49));
+
+            assert_eq!(System::events(), vec![
+                EventRecord {
+                    phase: Phase::ApplyExtrinsic(0),
+                    event: Event::delegation(RawEvent::Delegated(public, H256::from(1), weight))
+                },
+                EventRecord {
+                    phase: Phase::ApplyExtrinsic(0),
+                    event: Event::delegation(RawEvent::Undelegated(public, H256::from(1), 50))
+                },
+                EventRecord {
+                    phase: Phase::ApplyExtrinsic(0),
+                    event: Event::delegation(RawEvent::Undelegated(public, H256::from(1), 49))
+                }]
+            );
         });
     }
 }
