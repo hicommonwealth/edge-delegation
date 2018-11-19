@@ -54,8 +54,10 @@ decl_module! {
         /// delegate.
         pub fn delegate_to(origin, to: T::AccountId, weight: u32) -> Result {
             let _sender = ensure_signed(origin)?;
+            // Check sender is not delegating to itself
+            ensure!(_sender.clone() != to.clone(), "Invalid delegation action");
             // Check valid weight
-            ensure!(weight < 100, "Invalid weight");
+            ensure!(weight <= 100 && weight > 0, "Invalid weight");
             // Check that no delegation cycle exists
             ensure!(!Self::has_delegation_cycle(_sender.clone(), to.clone()), "Invalid delegation due to a cycle");
 
@@ -99,8 +101,10 @@ decl_module! {
         /// weight to undelegate.
         pub fn undelegate_from(origin, from: T::AccountId, weight: u32) -> Result {
             let _sender = ensure_signed(origin)?;
+            // Check sender is not undelegating from itself
+            ensure!(_sender.clone() != from.clone(), "Invalid delegation action");
             // Check valid weight
-            ensure!(weight < 100, "Invalid weight");
+            ensure!(weight <= 100 && weight > 0, "Invalid weight");
             // Check that sender is delegating to target account
             ensure!(<DelegatesOf<T>>::get(_sender.clone()).iter().any(|d| d.0 == from),
                     "Delegate doesn't exist");
@@ -134,7 +138,7 @@ decl_module! {
 }
 
 impl<T: Trait> Module<T> {
-    /// Implement rudimentary DFSg to find if "to"'s delegation every leads to "from"
+    /// Implement rudimentary DFS to find if "to"'s delegation ever leads to "from"
     pub fn has_delegation_cycle(from: T::AccountId, to: T::AccountId) -> bool {
         // Create data structures
         let mut stack: Vec<T::AccountId> = vec![to.clone()];

@@ -111,7 +111,6 @@ mod tests {
     }
 
     pub type System = system::Module<Test>;
-    pub type Balances = balances::Module<Test>;
     pub type Delegation = Module<Test>;
 
     // This function basically just builds a genesis storage key/value store according to
@@ -122,14 +121,115 @@ mod tests {
         t.into()
     }
 
+    fn delegate_to(who: H256, to_account: H256, weight: u32) -> super::Result {
+        Delegation::delegate_to(Origin::signed(who), to_account, weight)
+    }
+
+    fn undelegate_from(who: H256, from_account: H256, weight: u32) -> super::Result {
+        Delegation::undelegate_from(Origin::signed(who), from_account, weight)
+    }
+
     #[test]
-    fn propose_with_valid_sig_should_work() {
+    fn new_account_delegate_all_weight_should_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let to: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f61"));
+            let public: H256 = pair.public().0.into();
+            let to_public: H256 = to.public().0.into();
+            let weight = 100;
+
+            assert_ok!(delegate_to(public, to_public, weight));
+        });
+    }
+
+    #[test]
+    fn multi_delegate_should_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
             let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
             let public: H256 = pair.public().0.into();
 
+            for i in 1..101 {
+                let acct = H256::from(i);
+                assert_ok!(delegate_to(public, acct, 1));
+            }
+        });
+    }
+
+    #[test]
+    fn exceeding_delegation_limits_should_not_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let to: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f61"));
+            let public: H256 = pair.public().0.into();
+            let to_public: H256 = to.public().0.into();
+            let weight = 100;
+            let more_weight = 1;
+
+            assert_ok!(delegate_to(public, to_public, weight));
+            assert_eq!(delegate_to(public, to_public, more_weight), Err("Insufficient weight"));
+        });
+    }
+
+    #[test]
+    fn delegate_more_than_all_weight_should_not_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let to: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f61"));
+            let public: H256 = pair.public().0.into();
+            let to_public: H256 = to.public().0.into();
+            let weight = 101;
+
+            assert_eq!(delegate_to(public, to_public, weight), Err("Invalid weight"));
+        });
+    }
+
+    #[test]
+    fn delegate_to_oneself_should_not_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let public: H256 = pair.public().0.into();
+            let weight = 10;
+
+            assert_eq!(delegate_to(public, public, weight), Err("Invalid delegation action"));
+        });
+    }
+
+    #[test]
+    fn delegate_no_weight_should_not_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let public: H256 = pair.public().0.into();
+            let weight = 0;
+
+            assert_eq!(delegate_to(public, public, weight), Err("Invalid delegation action"));
+        });
+    }
+
+    #[test]
+    fn delegate_in_cycle_should_not_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            let pair: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"));
+            let to: Pair = Pair::from_seed(&hex!("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f61"));
+            let public: H256 = pair.public().0.into();
+            let to_public: H256 = to.public().0.into();
+            let weight = 100;
+
+            assert_ok!(delegate_to(public, to_public, weight));
+            assert_eq!(delegate_to(to_public, public, weight), Err("Invalid delegation due to a cycle"));
         });
     }
 }
