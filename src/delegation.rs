@@ -168,8 +168,8 @@ impl<T: Trait> Module<T> {
     pub fn has_delegation_cycle(from: T::AccountId, to: T::AccountId) -> bool {
         // Loop over delegation path of "to" to check if "from" exists
         let mut curr = to.clone();
-        while Self::delegates_of(curr.clone()).is_some() {
-            match Self::delegates_of(curr.clone()) {
+        while Self::delegate_of(curr.clone()).is_some() {
+            match Self::delegate_of(curr.clone()) {
                 Some(delegate) => {
                     if delegate.clone() == from.clone() {
                         return true;
@@ -182,6 +182,14 @@ impl<T: Trait> Module<T> {
         }
 
         return false;
+    }
+
+    /// Get the last node at the end of a delegation path for a given account
+    pub fn get_sink_delegator(start: T::AccountId) -> T::AccountId {
+        match Self::delegate_of(start.clone()) {
+            Some(delegate) => Self::get_sink_delegator(delegate),
+            None => start,
+        }
     }
 
     /// Implement rudimentary DFS to find if "to"'s delegation ever leads to "from"
@@ -222,6 +230,7 @@ impl<T: Trait> Module<T> {
         unimplemented!()
     }
 
+    /// Gets all accounts that aren't being delegated to, i.e. have 0 in-degree
     fn get_source_nodes(accounts: Vec<T::AccountId>) -> Vec<T::AccountId> {
         let mut bit_string: Vec<u32> = accounts.iter().map(|_| 1).collect();
         for a in accounts.clone() {
@@ -249,6 +258,13 @@ impl<T: Trait> Module<T> {
 
         return result;
     }
+
+    /// Tallies the "sink" delegators along a delegation path for each account
+    pub fn tally_delegation(accounts: Vec<T::AccountId>) -> Vec<(T::AccountId, T::AccountId)> {
+        accounts.into_iter()
+            .map(|a| (a.clone(), Self::get_sink_delegator(a.clone())))
+            .collect()
+    }
 }
 
 /// An event in this module.
@@ -264,7 +280,7 @@ decl_event!(
 decl_storage! {
     trait Store for Module<T: Trait> as IdentityStorage {
         /// The map of strict delegates for each account
-        pub DelegatesOf get(delegates_of): map T::AccountId => Option<T::AccountId>;
+        pub DelegatesOf get(delegate_of): map T::AccountId => Option<T::AccountId>;
         /// The amount of undelegated weight for an account
         pub WeightOf get(weight_of): map T::AccountId => u32;
         /// The map of weights an account is delegating to
