@@ -121,16 +121,59 @@ mod tests {
         t.into()
     }
 
-    fn delegate_to(who: H256, to_account: H256, weight: u32) -> super::Result {
-        Delegation::delegate_to(Origin::signed(who), to_account, weight)
+    fn delegate_to(who: H256, to_account: H256) -> super::Result {
+        Delegation::delegate_to(Origin::signed(who), to_account)
     }
 
-    fn undelegate_from(who: H256, from_account: H256, weight: u32) -> super::Result {
-        Delegation::undelegate_from(Origin::signed(who), from_account, weight)
+    fn undelegate_from(who: H256, from_account: H256) -> super::Result {
+        Delegation::undelegate_from(Origin::signed(who), from_account)
+    }
+
+    fn weighted_delegate_to(who: H256, to_account: H256, weight: u32) -> super::Result {
+        Delegation::weighted_delegate_to(Origin::signed(who), to_account, weight)
+    }
+
+    fn weighted_undelegate_from(who: H256, from_account: H256, weight: u32) -> super::Result {
+        Delegation::weighted_undelegate_from(Origin::signed(who), from_account, weight)
     }
 
     #[test]
-    fn new_account_delegate_all_weight_should_work() {
+    fn unit_delegate_should_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            assert_ok!(delegate_to(H256::from(1), H256::from(2)));
+            assert_eq!(System::events(), vec![
+                EventRecord {
+                    phase: Phase::ApplyExtrinsic(0),
+                    event: Event::delegation(RawEvent::Delegated(H256::from(1), H256::from(2)))
+                }]
+            );
+        });
+    }
+
+    #[test]
+    fn unit_undelegate_should_work() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+
+            assert_ok!(delegate_to(H256::from(1), H256::from(2)));
+            assert_ok!(undelegate_from(H256::from(1), H256::from(2)));
+            assert_eq!(System::events(), vec![
+                EventRecord {
+                    phase: Phase::ApplyExtrinsic(0),
+                    event: Event::delegation(RawEvent::Delegated(H256::from(1), H256::from(2)))
+                },
+                EventRecord {
+                    phase: Phase::ApplyExtrinsic(0),
+                    event: Event::delegation(RawEvent::Undelegated(H256::from(1), H256::from(2)))
+                }]
+            );
+        });
+    }
+
+    #[test]
+    fn weighted_delegate_all_weight_should_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -140,18 +183,18 @@ mod tests {
             let to_public: H256 = to.public().0.into();
             let weight = 100;
 
-            assert_ok!(delegate_to(public, to_public, weight));
+            assert_ok!(weighted_delegate_to(public, to_public, weight));
             assert_eq!(System::events(), vec![
                 EventRecord {
                     phase: Phase::ApplyExtrinsic(0),
-                    event: Event::delegation(RawEvent::Delegated(public, to_public, weight))
+                    event: Event::delegation(RawEvent::WeightedDelegated(public, to_public, weight))
                 }]
             );
         });
     }
 
     #[test]
-    fn multi_delegate_should_work() {
+    fn weighted_multi_delegate_should_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -160,13 +203,13 @@ mod tests {
 
             for i in 1..101 {
                 let acct = H256::from(i);
-                assert_ok!(delegate_to(public, acct, 1));
+                assert_ok!(weighted_delegate_to(public, acct, 1));
             }
         });
     }
 
     #[test]
-    fn exceeding_delegation_limits_should_not_work() {
+    fn weighted_delegation_exceeding_limits_should_not_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -177,13 +220,13 @@ mod tests {
             let weight = 100;
             let more_weight = 1;
 
-            assert_ok!(delegate_to(public, to_public, weight));
-            assert_eq!(delegate_to(public, to_public, more_weight), Err("Insufficient weight"));
+            assert_ok!(weighted_delegate_to(public, to_public, weight));
+            assert_eq!(weighted_delegate_to(public, to_public, more_weight), Err("Insufficient weight"));
         });
     }
 
     #[test]
-    fn delegate_more_than_all_weight_should_not_work() {
+    fn weighted_delegate_more_than_all_weight_should_not_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -193,12 +236,12 @@ mod tests {
             let to_public: H256 = to.public().0.into();
             let weight = 101;
 
-            assert_eq!(delegate_to(public, to_public, weight), Err("Invalid weight"));
+            assert_eq!(weighted_delegate_to(public, to_public, weight), Err("Invalid weight"));
         });
     }
 
     #[test]
-    fn delegate_to_oneself_should_not_work() {
+    fn weighted_delegate_to_oneself_should_not_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -206,12 +249,12 @@ mod tests {
             let public: H256 = pair.public().0.into();
             let weight = 10;
 
-            assert_eq!(delegate_to(public, public, weight), Err("Invalid delegation action"));
+            assert_eq!(weighted_delegate_to(public, public, weight), Err("Invalid delegation action"));
         });
     }
 
     #[test]
-    fn delegate_no_weight_should_not_work() {
+    fn weighted_delegate_no_weight_should_not_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -219,12 +262,12 @@ mod tests {
             let public: H256 = pair.public().0.into();
             let weight = 0;
 
-            assert_eq!(delegate_to(public, public, weight), Err("Invalid delegation action"));
+            assert_eq!(weighted_delegate_to(public, public, weight), Err("Invalid delegation action"));
         });
     }
 
     #[test]
-    fn delegate_in_cycle_should_not_work() {
+    fn weighted_delegate_in_cycle_should_not_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -234,13 +277,13 @@ mod tests {
             let to_public: H256 = to.public().0.into();
             let weight = 100;
 
-            assert_ok!(delegate_to(public, to_public, weight));
-            assert_eq!(delegate_to(to_public, public, weight), Err("Invalid delegation due to a cycle"));
+            assert_ok!(weighted_delegate_to(public, to_public, weight));
+            assert_eq!(weighted_delegate_to(to_public, public, weight), Err("Invalid delegation due to a cycle"));
         });
     }
 
     #[test]
-    fn new_account_delegate_and_undelegate_should_work() {
+    fn weighted_delegate_and_undelegate_should_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -250,30 +293,30 @@ mod tests {
             let to_public: H256 = to.public().0.into();
             let weight = 100;
 
-            assert_ok!(delegate_to(public, to_public, weight));
+            assert_ok!(weighted_delegate_to(public, to_public, weight));
             assert_eq!(System::events(), vec![
                 EventRecord {
                     phase: Phase::ApplyExtrinsic(0),
-                    event: Event::delegation(RawEvent::Delegated(public, to_public, weight))
+                    event: Event::delegation(RawEvent::WeightedDelegated(public, to_public, weight))
                 }]
             );
 
-            assert_ok!(undelegate_from(public, to_public, weight));
+            assert_ok!(weighted_undelegate_from(public, to_public, weight));
             assert_eq!(System::events(), vec![
                 EventRecord {
                     phase: Phase::ApplyExtrinsic(0),
-                    event: Event::delegation(RawEvent::Delegated(public, to_public, weight))
+                    event: Event::delegation(RawEvent::WeightedDelegated(public, to_public, weight))
                 },
                 EventRecord {
                     phase: Phase::ApplyExtrinsic(0),
-                    event: Event::delegation(RawEvent::Undelegated(public, to_public, weight))
+                    event: Event::delegation(RawEvent::WeightedUndelegated(public, to_public, weight))
                 }]
             );
         });
     }
 
     #[test]
-    fn undelegate_from_nobody_should_not_work() {
+    fn weighted_undelegate_from_nobody_should_not_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -281,12 +324,12 @@ mod tests {
             let public: H256 = pair.public().0.into();
             let weight = 100;
 
-            assert_eq!(undelegate_from(public, H256::from(1), weight), Err("Delegate doesn't exist"));
+            assert_eq!(weighted_undelegate_from(public, H256::from(1), weight), Err("Delegate doesn't exist"));
         });
     }
 
     #[test]
-    fn undelegate_from_onself_should_not_work() {
+    fn weighted_undelegate_from_onself_should_not_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -294,7 +337,7 @@ mod tests {
             let public: H256 = pair.public().0.into();
             let weight = 100;
 
-            assert_eq!(undelegate_from(public, public, weight), Err("Invalid delegation action"));
+            assert_eq!(weighted_undelegate_from(public, public, weight), Err("Invalid delegation action"));
         });
     }
 
@@ -307,12 +350,12 @@ mod tests {
             let public: H256 = pair.public().0.into();
             let weight = 101;
 
-            assert_eq!(undelegate_from(public, H256::from(1), weight), Err("Invalid weight"));
+            assert_eq!(weighted_undelegate_from(public, H256::from(1), weight), Err("Invalid weight"));
         });
     }
 
     #[test]
-    fn undelegate_more_than_exists_should_not_work() {
+    fn weighted_undelegate_more_than_exists_should_not_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -321,13 +364,13 @@ mod tests {
             let weight = 99;
             let more_than_exists = 100;
 
-            assert_ok!(delegate_to(public, H256::from(1), weight));
-            assert_eq!(undelegate_from(public, H256::from(1), more_than_exists), Err("Invalid undelegation weight"));
+            assert_ok!(weighted_delegate_to(public, H256::from(1), weight));
+            assert_eq!(weighted_undelegate_from(public, H256::from(1), more_than_exists), Err("Invalid undelegation weight"));
         });
     }
 
     #[test]
-    fn undelegate_less_than_exists_should_work() {
+    fn weighted_undelegate_less_than_exists_should_work() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
 
@@ -335,22 +378,22 @@ mod tests {
             let public: H256 = pair.public().0.into();
             let weight = 99;
 
-            assert_ok!(delegate_to(public, H256::from(1), weight));
-            assert_ok!(undelegate_from(public, H256::from(1), 50));
-            assert_ok!(undelegate_from(public, H256::from(1), 49));
+            assert_ok!(weighted_delegate_to(public, H256::from(1), weight));
+            assert_ok!(weighted_undelegate_from(public, H256::from(1), 50));
+            assert_ok!(weighted_undelegate_from(public, H256::from(1), 49));
 
             assert_eq!(System::events(), vec![
                 EventRecord {
                     phase: Phase::ApplyExtrinsic(0),
-                    event: Event::delegation(RawEvent::Delegated(public, H256::from(1), weight))
+                    event: Event::delegation(RawEvent::WeightedDelegated(public, H256::from(1), weight))
                 },
                 EventRecord {
                     phase: Phase::ApplyExtrinsic(0),
-                    event: Event::delegation(RawEvent::Undelegated(public, H256::from(1), 50))
+                    event: Event::delegation(RawEvent::WeightedUndelegated(public, H256::from(1), 50))
                 },
                 EventRecord {
                     phase: Phase::ApplyExtrinsic(0),
-                    event: Event::delegation(RawEvent::Undelegated(public, H256::from(1), 49))
+                    event: Event::delegation(RawEvent::WeightedUndelegated(public, H256::from(1), 49))
                 }]
             );
         });
