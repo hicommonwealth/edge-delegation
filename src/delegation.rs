@@ -51,14 +51,12 @@ decl_module! {
 
         pub fn delegate_to(origin, to: T::AccountId) -> Result {
             let _sender = ensure_signed(origin)?;
-            // Check sender is not delegating to itself
-            ensure!(_sender.clone() != to.clone(), "Invalid delegation action");
             // Check that no delegation cycle exists
-            ensure!(!Self::has_delegation_cycle(_sender.clone(), to.clone()), "Invalid delegation due to a cycle");
+            ensure!(!Self::has_delegation_cycle(&_sender, to.clone()), "Invalid delegation");
             // Update the delegate to Some(delegate)
-            <DelegatesOf<T>>::insert(_sender.clone(), to.clone());
+            <DelegatesOf<T>>::insert(&_sender, &to);
             // Fire delegation event
-            Self::deposit_event(RawEvent::Delegated(_sender.clone(), to.clone()));
+            Self::deposit_event(RawEvent::Delegated(_sender, to));
 
             Ok(())
         }
@@ -66,11 +64,11 @@ decl_module! {
         pub fn undelegate_from(origin, from: T::AccountId) -> Result {
             let _sender = ensure_signed(origin)?;
             // Check sender is not delegating to itself
-            ensure!(_sender.clone() != from.clone(), "Invalid delegation action");
+            ensure!(_sender != from, "Invalid delegation action");
             // Update the delegate to the sender, None type throws an error due to missing Trait bound
-            <DelegatesOf<T>>::insert(_sender.clone(), _sender.clone());
+            <DelegatesOf<T>>::remove(&_sender);
             // Fire delegation event
-            Self::deposit_event(RawEvent::Undelegated(_sender.clone(), from.clone()));
+            Self::deposit_event(RawEvent::Undelegated(_sender, from));
 
             Ok(())
         }
@@ -165,28 +163,20 @@ decl_module! {
 
 impl<T: Trait> Module<T> {
     /// Implement rudimentary DFS to find if "to"'s delegation ever leads to "from"
-    pub fn has_delegation_cycle(from: T::AccountId, to: T::AccountId) -> bool {
+    pub fn has_delegation_cycle(from: &T::AccountId, to: T::AccountId) -> bool {
         // Loop over delegation path of "to" to check if "from" exists
-        let mut curr = to.clone();
-        while Self::delegate_of(curr.clone()).is_some() {
-            match Self::delegate_of(curr.clone()) {
-                Some(delegate) => {
-                    if delegate.clone() == from.clone() {
-                        return true;
-                    }
-
-                    curr = delegate.clone();
-                },
-                None => (),
-            }
+        if (from == &to) {
+            return true;
         }
-
-        return false;
+        match Self::delegate_of(&to) {
+            Some(delegate) => Self::has_delegation_cycle(from, delegate),
+            None => false,
+        }
     }
 
     /// Get the last node at the end of a delegation path for a given account
     pub fn get_sink_delegator(start: T::AccountId) -> T::AccountId {
-        match Self::delegate_of(start.clone()) {
+        match Self::delegate_of(&start) {
             Some(delegate) => Self::get_sink_delegator(delegate),
             None => start,
         }
@@ -262,7 +252,7 @@ impl<T: Trait> Module<T> {
     /// Tallies the "sink" delegators along a delegation path for each account
     pub fn tally_delegation(accounts: Vec<T::AccountId>) -> Vec<(T::AccountId, T::AccountId)> {
         accounts.into_iter()
-            .map(|a| (a.clone(), Self::get_sink_delegator(a.clone())))
+            .map(|a| (a.clone(), Self::get_sink_delegator(a)))
             .collect()
     }
 }
