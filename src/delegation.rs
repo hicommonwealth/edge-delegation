@@ -51,14 +51,12 @@ decl_module! {
 
         pub fn delegate_to(origin, to: T::AccountId) -> Result {
             let _sender = ensure_signed(origin)?;
-            // Check sender is not delegating to itself
-            ensure!(_sender.clone() != to.clone(), "Invalid delegation action");
             // Check that no delegation cycle exists
-            ensure!(!Self::has_delegation_cycle(_sender.clone(), to.clone()), "Invalid delegation due to a cycle");
+            ensure!(!Self::has_delegation_cycle(&_sender, to.clone()), "Invalid delegation");
             // Update the delegate to Some(delegate)
-            <DelegatesOf<T>>::insert(_sender.clone(), to.clone());
+            <DelegatesOf<T>>::insert(&_sender, &to);
             // Fire delegation event
-            Self::deposit_event(RawEvent::Delegated(_sender.clone(), to.clone()));
+            Self::deposit_event(RawEvent::Delegated(_sender, to));
 
             Ok(())
         }
@@ -66,98 +64,12 @@ decl_module! {
         pub fn undelegate_from(origin, from: T::AccountId) -> Result {
             let _sender = ensure_signed(origin)?;
             // Check sender is not delegating to itself
-            ensure!(_sender.clone() != from.clone(), "Invalid delegation action");
+            ensure!(_sender != from, "Invalid undelegation");
             // Update the delegate to the sender, None type throws an error due to missing Trait bound
-            <DelegatesOf<T>>::insert(_sender.clone(), _sender.clone());
+            <DelegatesOf<T>>::remove(&_sender);
             // Fire delegation event
-            Self::deposit_event(RawEvent::Undelegated(_sender.clone(), from.clone()));
+            Self::deposit_event(RawEvent::Undelegated(_sender, from));
 
-            Ok(())
-        }
-
-        /// Delegate a fraction X/100 of an account's voting weight to the "to" account.
-        /// Ensures that X is valid and that an account has enough remaining weight to
-        /// delegate.
-        pub fn weighted_delegate_to(origin, to: T::AccountId, weight: u32) -> Result {
-            let _sender = ensure_signed(origin)?;
-            // Check sender is not delegating to itself
-            ensure!(_sender.clone() != to.clone(), "Invalid delegation action");
-            // Check valid weight
-            ensure!(weight <= 100 && weight > 0, "Invalid weight");
-            // Check that no delegation cycle exists
-            ensure!(!Self::weighted_has_delegation_cycle(_sender.clone(), to.clone()), "Invalid delegation due to a cycle");
-
-            // Since weights are initialized to zero, check if we haven't delegated yet
-            let mut curr_weight = <WeightOf<T>>::get(_sender.clone());
-            if <WeightedDelegatesOf<T>>::get(_sender.clone()).len() > 0 {
-                // Ensure account has enough delegatable weight if already delegating
-                ensure!(<WeightOf<T>>::get(_sender.clone()) >= weight,
-                        "Insufficient weight");    
-            } else {
-                curr_weight = 100;
-            }
-            
-            // Set new weight of account by subtracting delegated weight
-            let new_weight = curr_weight - weight;
-            <WeightOf<T>>::insert(_sender.clone(), new_weight);
-
-            // Check if delegate already exists and increase delegated weight
-            let mut delegates = <WeightedDelegatesOf<T>>::get(_sender.clone());
-            if delegates.iter().any(|d| d.0 == to.clone()) {
-                let index = delegates.iter().position(|d| d.0 == to.clone()).unwrap();
-                // Remove record to increment weight
-                let mut delegate_record = delegates.remove(index);
-                // Increment weight
-                delegate_record.1 += weight;
-                // Add updated delegate back to list of delegates
-                delegates.push((to.clone(), delegate_record.1));
-            } else {
-                delegates.push((to.clone(), weight));
-            }
-
-            // Update set of delegates
-            <WeightedDelegatesOf<T>>::insert(_sender.clone(), delegates);
-            // Fire delegation event
-            Self::deposit_event(RawEvent::WeightedDelegated(_sender.clone(), to.clone(), weight));
-            Ok(())
-        }
-
-        /// Undelegate a fraction X/100 of an account's voting weight to the "to"
-        /// account. Ensures that X is valid and that an account has enough remaining
-        /// weight to undelegate.
-        pub fn weighted_undelegate_from(origin, from: T::AccountId, weight: u32) -> Result {
-            let _sender = ensure_signed(origin)?;
-            // Check sender is not undelegating from itself
-            ensure!(_sender.clone() != from.clone(), "Invalid delegation action");
-            // Check valid weight
-            ensure!(weight <= 100 && weight > 0, "Invalid weight");
-            // Check that sender is delegating to target account
-            ensure!(<WeightedDelegatesOf<T>>::get(_sender.clone()).iter().any(|d| d.0 == from),
-                    "Delegate doesn't exist");
-
-
-            let curr_weight = <WeightOf<T>>::get(_sender.clone());
-
-            let mut delegates = <WeightedDelegatesOf<T>>::get(_sender.clone());
-            let index = delegates.iter().position(|d| d.0 == from.clone()).unwrap();
-
-            // Check that undelegation weight is $\leq$ to current delegated weight
-            ensure!(delegates[index].1 >= weight, "Invalid undelegation weight");
-
-            // Remove record and update if undelegating leaves non-zero weight
-            let mut delegate_record = delegates.remove(index);
-            if delegate_record.1 > weight {
-                delegate_record.1 -= weight;
-                delegates.push(delegate_record);
-            }
-
-            // Update weight of account by adding the undelegated weight back
-            let new_weight = curr_weight + weight;
-            <WeightOf<T>>::insert(_sender.clone(), new_weight);
-            // Update the set of delegates of the sender
-            <WeightedDelegatesOf<T>>::insert(_sender.clone(), delegates);
-            // Fire undelegation event
-            Self::deposit_event(RawEvent::WeightedUndelegated(_sender.clone(), from.clone(), weight));
             Ok(())
         }
     }
@@ -165,104 +77,29 @@ decl_module! {
 
 impl<T: Trait> Module<T> {
     /// Implement rudimentary DFS to find if "to"'s delegation ever leads to "from"
-    pub fn has_delegation_cycle(from: T::AccountId, to: T::AccountId) -> bool {
+    pub fn has_delegation_cycle(from: &T::AccountId, to: T::AccountId) -> bool {
         // Loop over delegation path of "to" to check if "from" exists
-        let mut curr = to.clone();
-        while Self::delegate_of(curr.clone()).is_some() {
-            match Self::delegate_of(curr.clone()) {
-                Some(delegate) => {
-                    if delegate.clone() == from.clone() {
-                        return true;
-                    }
-
-                    curr = delegate.clone();
-                },
-                None => (),
-            }
+        if from == &to {
+            return true;
         }
-
-        return false;
+        match Self::delegate_of(&to) {
+            Some(delegate) => Self::has_delegation_cycle(from, delegate),
+            None => false,
+        }
     }
 
     /// Get the last node at the end of a delegation path for a given account
     pub fn get_sink_delegator(start: T::AccountId) -> T::AccountId {
-        match Self::delegate_of(start.clone()) {
+        match Self::delegate_of(&start) {
             Some(delegate) => Self::get_sink_delegator(delegate),
             None => start,
         }
     }
 
-    /// Implement rudimentary DFS to find if "to"'s delegation ever leads to "from"
-    pub fn weighted_has_delegation_cycle(from: T::AccountId, to: T::AccountId) -> bool {
-        // Create data structures
-        let mut stack: Vec<T::AccountId> = vec![to.clone()];
-        let mut seen: Vec<T::AccountId> = vec![];
-        seen.push(to.clone());
-
-        // Loop over all delegates of "to" to see if a cycle exists back to "from"
-        // i.e. if "from" delegates to "to" will there be a cycle back to "from"
-        while !stack.is_empty() {
-            match stack.pop() {
-                Some(elt) => {
-                    let delegates = <WeightedDelegatesOf<T>>::get(elt.clone());
-                    for d in delegates {
-                        // Check if delegate is from
-                        if d.0.clone() == from.clone() {
-                            return true;
-                        }
-
-                        // Otherwise push delegates of node onto stack
-                        if !seen.contains(&d.0.clone()) {
-                            stack.push(d.0.clone());
-                            // Mark delegate as seen
-                            seen.push(d.0.clone());
-                        }
-                    }
-                },
-                None => ()
-            }
-        }
-
-        return false;
-    }
-
-    pub fn find_rounded_weights(accounts: Vec<T::AccountId>, votes: Vec<u64>) -> Vec<(T::AccountId, u64)> {
-        unimplemented!()
-    }
-
-    /// Gets all accounts that aren't being delegated to, i.e. have 0 in-degree
-    fn get_source_nodes(accounts: Vec<T::AccountId>) -> Vec<T::AccountId> {
-        let mut bit_string: Vec<u32> = accounts.iter().map(|_| 1).collect();
-        for a in accounts.clone() {
-            let mut delegates: Vec<T::AccountId> = Self::weighted_delegates_of(a.clone())
-                .iter()
-                .map(|elt| elt.clone().0)
-                .collect();
-
-            for delegate in delegates.clone() {
-                let index = delegates
-                    .iter()
-                    .position(|d| d == &delegate.clone())
-                    .unwrap();
-
-                bit_string[index] = 0;
-            }
-        }
-        
-        let mut result: Vec<T::AccountId> = vec![];
-        for (i, elt) in bit_string.iter().enumerate() {
-            if elt == &1 {
-                result.push(accounts[i].clone());
-            }
-        }
-
-        return result;
-    }
-
     /// Tallies the "sink" delegators along a delegation path for each account
     pub fn tally_delegation(accounts: Vec<T::AccountId>) -> Vec<(T::AccountId, T::AccountId)> {
         accounts.into_iter()
-            .map(|a| (a.clone(), Self::get_sink_delegator(a.clone())))
+            .map(|a| (a.clone(), Self::get_sink_delegator(a)))
             .collect()
     }
 }
@@ -272,8 +109,6 @@ decl_event!(
     pub enum Event<T> where <T as system::Trait>::AccountId {
         Delegated(AccountId, AccountId),
         Undelegated(AccountId, AccountId),
-        WeightedDelegated(AccountId, AccountId, u32),
-        WeightedUndelegated(AccountId, AccountId, u32),
     }
 );
 
@@ -281,9 +116,5 @@ decl_storage! {
     trait Store for Module<T: Trait> as IdentityStorage {
         /// The map of strict delegates for each account
         pub DelegatesOf get(delegate_of): map T::AccountId => Option<T::AccountId>;
-        /// The amount of undelegated weight for an account
-        pub WeightOf get(weight_of): map T::AccountId => u32;
-        /// The map of weights an account is delegating to
-        pub WeightedDelegatesOf get(weighted_delegates_of): map T::AccountId => Vec<(T::AccountId, u32)>;
     }
 }
