@@ -64,7 +64,7 @@ decl_module! {
         pub fn undelegate_from(origin, from: T::AccountId) -> Result {
             let _sender = ensure_signed(origin)?;
             // Check sender is not delegating to itself
-            ensure!(_sender != from, "Invalid delegation action");
+            ensure!(_sender != from, "Invalid undelegation");
             // Update the delegate to the sender, None type throws an error due to missing Trait bound
             <DelegatesOf<T>>::remove(&_sender);
             // Fire delegation event
