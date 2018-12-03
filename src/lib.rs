@@ -48,7 +48,7 @@ use runtime_support::dispatch::Result;
 use primitives::ed25519;
 
 pub mod delegation;
-use delegation::{Module, Trait, RawEvent};
+pub use delegation::{Module, Trait, RawEvent, Event};
 
 // Tests for Delegation Module
 #[cfg(test)]
