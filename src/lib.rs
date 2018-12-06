@@ -45,7 +45,6 @@ extern crate srml_system as system;
 
 use rstd::prelude::*;
 use runtime_support::dispatch::Result;
-use primitives::ed25519;
 
 pub mod delegation;
 pub use delegation::{Module, Trait, RawEvent, Event};
@@ -57,7 +56,6 @@ mod tests {
 
     use system::{EventRecord, Phase};
     use runtime_io::with_externalities;
-    use runtime_io::ed25519::Pair;
     use primitives::{H256, Blake2Hasher};
     // The testing primitives are very useful for avoiding having to work with signatures
     // or public keys. `u64` is used as the `AccountId` and no `Signature`s are requried.
