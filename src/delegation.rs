@@ -112,7 +112,7 @@ decl_event!(
 );
 
 decl_storage! {
-    trait Store for Module<T: Trait> as DelegationStorage {
+    trait Store for Module<T: Trait> as Delegation {
         /// The map of strict delegates for each account
         pub DelegatesOf get(delegate_of): map T::AccountId => Option<T::AccountId>;
     }
